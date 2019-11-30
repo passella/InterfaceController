@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{C04BCB5F-1CEE-4D28-964B-8B7DDB507EFE}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="app\project\Demo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="dll\MyInterfaceImplementationDll\project\MyInterfaceImplementationDll.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="Demo">
+        <MSBuild Projects="app\project\Demo.dproj"/>
+    </Target>
+    <Target Name="Demo:Clean">
+        <MSBuild Projects="app\project\Demo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Demo:Make">
+        <MSBuild Projects="app\project\Demo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MyInterfaceImplementationDll">
+        <MSBuild Projects="dll\MyInterfaceImplementationDll\project\MyInterfaceImplementationDll.dproj"/>
+    </Target>
+    <Target Name="MyInterfaceImplementationDll:Clean">
+        <MSBuild Projects="dll\MyInterfaceImplementationDll\project\MyInterfaceImplementationDll.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MyInterfaceImplementationDll:Make">
+        <MSBuild Projects="dll\MyInterfaceImplementationDll\project\MyInterfaceImplementationDll.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="Demo;MyInterfaceImplementationDll"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="Demo:Clean;MyInterfaceImplementationDll:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="Demo:Make;MyInterfaceImplementationDll:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
