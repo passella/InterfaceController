@@ -8,6 +8,7 @@ uses
    untIMyInterface, untInterfaceController, Winapi.Windows, System.SysUtils;
 
 type
+   [Singleton]
    TMyInterface = class(TInterfacedObject, IMyInterface)
    private
       function GetModuleName: string;
@@ -32,7 +33,6 @@ begin
 end;
 
 initialization
-
-TInterfaceController.RegisterClass(TMyInterface);
+   TInterfaceController.RegisterClass(TMyInterface);
 
 end.
