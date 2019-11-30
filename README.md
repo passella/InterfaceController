@@ -4,7 +4,7 @@
 
 #### Example:
 
-How to call
+How to call:
 
     ShowMessage(TInterfaceController.CreateInterface<IMyInterface>().Get());
     
