@@ -66,7 +66,6 @@ type
       class var prcOnDllException: TOnDllExceptionPrc;
 
       class var dicRegistries: TObjectDictionary<string, TObject>;
-      class var dicSingleton: TObjectDictionary<string, TObject>;
       class var lstClearSingleton: TList<TProc>;
       class var dicDllCache: TDictionary<TGUID, string>;
 
@@ -113,12 +112,6 @@ type
 
       class function CreateInterface(const guid: TGUID): IInterface; overload;
       class function CreateInterface<T>(const key: T; const guid: TGUID): IInterface; overload;
-
-      class function Singleton<I: IInterface>(): I; overload;
-      class function Singleton<T; I: IInterface>(const key: T): I; overload;
-
-      class function Singleton(const guid: TGUID): IInterface; overload;
-      class function Singleton<T>(const key: T; const guid: TGUID): IInterface; overload;
 
       class function HasInterface<I: IInterface>(): Boolean; overload;
       class function HasInterface<T; I: IInterface>(const key: T): Boolean; overload;
@@ -211,7 +204,6 @@ class constructor TInterfaceController.Create;
 begin
    TInterfaceController.lock := TObject.Create;
    TInterfaceController.dicRegistries := TObjectDictionary<string, TObject>.Create([doOwnsValues]);
-   TInterfaceController.dicSingleton := TObjectDictionary<string, TObject>.Create([doOwnsValues]);
    TInterfaceController.lstClearSingleton := TList<TProc>.Create;;
    TInterfaceController.lstPaths := TList<string>.Create();
    TInterfaceController.dicDllsController := TObjectDictionary<string, IInterfaceControllerDll>.Create();
@@ -371,8 +363,7 @@ end;
 
 class destructor TInterfaceController.Destroy;
 begin
-   if Assigned(TInterfaceController.dicSingleton) then
-      FreeAndNil(TInterfaceController.dicSingleton);
+   TInterfaceController.ClearSingleton;
    if Assigned(TInterfaceController.dicRegistries) then
       FreeAndNil(TInterfaceController.dicRegistries);
    if Assigned(TInterfaceController.lock) then
@@ -655,9 +646,6 @@ end;
 
 class procedure TInterfaceController.ClearSingleton;
 begin
-   if Assigned(TInterfaceController.dicSingleton) then
-      FreeAndNil(TInterfaceController.dicSingleton);
-
    for var p in lstClearSingleton do
    begin
       p();
@@ -941,149 +929,6 @@ begin
    end;
 end;
 
-class function TInterfaceController.Singleton(const guid: TGUID): IInterface;
-begin
-   Result := ExecuteLocked<IInterface>(function (): IInterface
-      begin
-         Result := nil;
-         var strKey := GetTypeName(TypeInfo(TGUID));
-         var obj: TObject;
-         if not dicSingleton.TryGetValue(strKey, obj) then
-         begin
-            Result := Self.CreateInterface(guid);
-
-            var objComparer: TObject;
-            var comparer: IEqualityComparer<TGUID>;
-            if dicComparers.TryGetValue(strKey, objComparer) then
-            begin
-               comparer := TDelegatedEqualityComparer<TGUID>(objComparer);
-            end;
-
-            if not Assigned(comparer) then
-            begin
-               comparer := TEqualityComparer<TGUID>.Default();
-            end;
-
-            obj := TObjectDictionary<TGUID, TInterfaceWrapper>.Create([doOwnsValues], comparer);
-            (obj as TObjectDictionary<TGUID, TInterfaceWrapper>).AddOrSetValue(guid, TInterfaceWrapper.Create(Result));
-            dicSingleton.AddOrSetValue(strKey, obj);
-         end
-         else
-         begin
-            var dicObj := (obj as TObjectDictionary<TGUID, TInterfaceWrapper>);
-            var intF: TInterfaceWrapper;
-            if not dicObj.TryGetValue(guid, intF) then
-            begin
-               Result := Self.CreateInterface(guid);
-               intF := TInterfaceWrapper.Create(Result);
-               dicObj.AddOrSetValue(guid, intF);
-            end
-            else
-            begin
-               if not Supports(intF.intf, guid, Result) then
-                  Result := nil;
-            end;
-         end;
-      end);
-end;
-
-class function TInterfaceController.Singleton<I>: I;
-begin
-   var guid := GetTypeData(TypeInfo(I))^.GUID();
-   var intF := Singleton(guid);
-   if not Supports(intF, guid, Result) then
-      raise EInterfaceControllerNotRegistred.CreateFmt('Interface %s não registrada', [GetInterfaceName<I>()]);
-end;
-
-class function TInterfaceController.Singleton<T, I>(const key: T): I;
-begin
-   var guid := GetTypeData(TypeInfo(I))^.GUID();
-   var intF := Singleton<T>(key, guid);
-   if not Supports(intF, guid, Result) then
-      raise EInterfaceControllerNotRegistred.CreateFmt('Interface %s não registrada', [GetInterfaceName<I>()]);
-end;
-
-class function TInterfaceController.Singleton<T>(const key: T;
-  const guid: TGUID): IInterface;
-begin
-   Result := ExecuteLocked<IInterface>(function (): IInterface
-      begin
-         Result := nil;
-         var strKey := GetTypeName(TypeInfo(T));
-         var obj: TObject;
-         if not dicSingleton.TryGetValue(strKey, obj) then
-         begin
-            try
-               Result := Self.CreateInterface<T>(key, guid);
-            except
-               on E: EInterfaceControllerNotRegistred do
-               begin
-                  raise EInterfaceControllerNotRegistred.CreateFmt('Interface <%s>%s não registrada', [TValue.From<T>(key).ToString(), GetInterfaceName(guid)]);
-               end;
-            end;
-
-            var objComparer: TObject;
-            var comparer: IEqualityComparer<T>;
-            if dicComparers.TryGetValue(strKey, objComparer) then
-            begin
-               comparer := TDelegatedEqualityComparer<T>(objComparer);
-            end;
-
-            if not Assigned(comparer) then
-            begin
-               comparer := TEqualityComparer<T>.Default();
-            end;
-
-            obj := TObjectDictionary<T, TDictionary<TGUID, TInterfaceWrapper>>.Create([doOwnsValues], comparer);
-            var dicInterfaceWrapper := TDictionary<TGUID, TInterfaceWrapper>.Create();
-            (obj as TObjectDictionary<T, TDictionary<TGUID, TInterfaceWrapper>>).AddOrSetValue(key, dicInterfaceWrapper);
-            dicInterfaceWrapper.AddOrSetValue(guid, TInterfaceWrapper.Create(Result));
-            dicSingleton.AddOrSetValue(strKey, obj);
-         end
-         else
-         begin
-            var dicObj := (obj as TObjectDictionary<T, TDictionary<TGUID, TInterfaceWrapper>>);
-            var dicIntF: TDictionary<TGUID, TInterfaceWrapper>;
-            if not dicObj.TryGetValue(key, dicIntF) then
-            begin
-               var objComparer: TObject;
-               var comparer: IEqualityComparer<T>;
-               if dicComparers.TryGetValue(strKey, objComparer) then
-               begin
-                  comparer := TDelegatedEqualityComparer<T>(objComparer);
-               end;
-
-               if not Assigned(comparer) then
-               begin
-                  comparer := TEqualityComparer<T>.Default();
-               end;
-
-               Result := Self.CreateInterface<T>(key, guid);
-               obj := TObjectDictionary<T, TDictionary<TGUID, TInterfaceWrapper>>.Create([doOwnsValues], comparer);
-               dicIntF := TDictionary<TGUID, TInterfaceWrapper>.Create();
-               (obj as TObjectDictionary<T, TDictionary<TGUID, TInterfaceWrapper>>).AddOrSetValue(key, dicIntF);
-               dicIntF.AddOrSetValue(guid, TInterfaceWrapper.Create(Result));
-               dicSingleton.AddOrSetValue(strKey, obj);
-            end
-            else
-            begin
-               var intF: TInterfaceWrapper;
-               if not dicIntF.TryGetValue(guid, intF) then
-               begin
-                  Result := Self.CreateInterface<T>(key, guid);
-                  intF := TInterfaceWrapper.Create(Result);
-                  dicIntF.AddOrSetValue(guid, intF);
-               end
-               else
-               begin
-                  if Supports(intF.intf, guid, Result) then
-                     Exit;
-               end;
-            end;
-         end;
-      end);
-end;
-
 { TInterfaceWrapper }
 
 constructor TInterfaceWrapper.Create(intf: IInterface);
@@ -1100,7 +945,6 @@ begin
    end;
    inherited Destroy;
 end;
-
 
 { TInterfaceControllerFactoryAdapter<I> }
 
