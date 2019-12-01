@@ -67,6 +67,7 @@ type
 
       class var dicRegistries: TObjectDictionary<string, TObject>;
       class var dicSingleton: TObjectDictionary<string, TObject>;
+      class var lstClearSingleton: TList<TProc>;
       class var dicDllCache: TDictionary<TGUID, string>;
 
       class var lstPaths: TList<string>;
@@ -211,6 +212,7 @@ begin
    TInterfaceController.lock := TObject.Create;
    TInterfaceController.dicRegistries := TObjectDictionary<string, TObject>.Create([doOwnsValues]);
    TInterfaceController.dicSingleton := TObjectDictionary<string, TObject>.Create([doOwnsValues]);
+   TInterfaceController.lstClearSingleton := TList<TProc>.Create;;
    TInterfaceController.lstPaths := TList<string>.Create();
    TInterfaceController.dicDllsController := TObjectDictionary<string, IInterfaceControllerDll>.Create();
    TInterfaceController.dicDllCache := TDictionary<TGUID, string>.Create();;
@@ -387,6 +389,8 @@ begin
       FreeAndNil(TInterfaceController.dicInterfacesNames);
    if Assigned(TInterfaceController.lstOnDllLoad) then
       FreeAndNil(TInterfaceController.lstOnDllLoad);
+   if Assigned(TInterfaceController.lstClearSingleton) then
+      FreeAndNil(TInterfaceController.lstClearSingleton);
 end;
 
 class procedure TInterfaceController.ExecuteLocked(const prc: TProc);
@@ -653,6 +657,11 @@ class procedure TInterfaceController.ClearSingleton;
 begin
    if Assigned(TInterfaceController.dicSingleton) then
       FreeAndNil(TInterfaceController.dicSingleton);
+
+   for var p in lstClearSingleton do
+   begin
+      p();
+   end;
 end;
 
 class procedure TInterfaceController.RegisterImplementation<I>(const interfaceControllerFactory: IInterfaceControllerFactory<I>);
@@ -1121,6 +1130,10 @@ begin
                if attr is SingletonAttribute then
                begin
                   instancia := Result;
+                  TInterfaceController.lstClearSingleton.Add(procedure ()
+                     begin
+                        instancia := nil;
+                     end);
                   Exit;
                end;
             end;
@@ -1297,6 +1310,10 @@ begin
                if attr is SingletonAttribute then
                begin
                   instancia := Result;
+                  TInterfaceController.lstClearSingleton.Add(procedure ()
+                     begin
+                        instancia := nil;
+                     end);
                   Exit;
                end;
             end;
