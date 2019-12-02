@@ -138,22 +138,27 @@ type
    ELoadLibraryNull = class(Exception);
    EInterfaceControllerDllInvalid = class(Exception);
 
-   TInterfaceControllerFactoryAdapter<I: IInterface> = class(TInterfacedObject, IInterfaceControllerFactory<I>)
+   TAbstractInterfaceControllerFactoryAdapter<I: IInterface> = class(TInterfacedObject)
+   private
+      instance: I;
+      singleton: Boolean;
+      function GetInstance(const fnc: TFunc<I>): I;
+   public
+      constructor Create();
+   end;
+
+   TInterfaceControllerFactoryAdapter<I: IInterface> = class(TAbstractInterfaceControllerFactoryAdapter<I>, IInterfaceControllerFactory<I>)
    private
       interfaceControllerFactory: TInterfaceControllerFactory<I>;
-      instancia: I;
-      singleton: Boolean;
    public
       constructor Create(const interfaceControllerFactory: TInterfaceControllerFactory<I>);
       function Get(): I;
    end;
 
-   TInterfaceControllerFactoryAdapterGuid<I: IInterface> = class(TInterfacedObject, IInterfaceControllerFactory<I>)
+   TInterfaceControllerFactoryAdapterGuid<I: IInterface> = class(TAbstractInterfaceControllerFactoryAdapter<I>, IInterfaceControllerFactory<I>)
    private
       guid: TGUID;
       interfaceControllerFactoryGuid: TInterfaceControllerFactoryGuid<I>;
-      instancia: I;
-      singleton: Boolean;
    public
       constructor Create(const guid: TGUID; const interfaceControllerFactoryGuid: TInterfaceControllerFactoryGuid<I>);
       function Get(): I;
@@ -952,42 +957,14 @@ constructor TInterfaceControllerFactoryAdapter<I>.Create(const interfaceControll
 begin
    inherited Create();
    Self.interfaceControllerFactory := interfaceControllerFactory;
-   Self.instancia := nil;
-   Self.singleton := True;
 end;
 
 function TInterfaceControllerFactoryAdapter<I>.Get: I;
 begin
-   Result := instancia;
-   if not Assigned(Result) then
-   begin
-      Result := interfaceControllerFactory();
-      if singleton and (Result is TObject) then
+   Result := GetInstance(function (): I
       begin
-         var obj := Result as TObject;
-         var context := TRttiContext.Create;
-         try
-            var rttiType := context.GetType(obj.ClassType);
-            var attrs: TArray<TCustomAttribute> := rttiType.GetAttributes();
-            for var attr in attrs do
-            begin
-               if attr is SingletonAttribute then
-               begin
-                  instancia := Result;
-                  TInterfaceController.lstClearSingleton.Add(procedure ()
-                     begin
-                        instancia := nil;
-                     end);
-                  Exit;
-               end;
-            end;
-
-            singleton := False;
-         finally
-            context.Free;
-         end;
-      end;
-   end;
+         Result := interfaceControllerFactory();
+      end);
 end;
 
 { TDll }
@@ -1132,34 +1109,56 @@ begin
    inherited Create();
    Self.guid := guid;
    Self.interfaceControllerFactoryGuid := interfaceControllerFactoryGuid;
-   Self.instancia := nil;
-   Self.singleton := True;
 end;
 
 function TInterfaceControllerFactoryAdapterGuid<I>.Get: I;
 begin
-   Result := instancia;
+   Result := Self.GetInstance(function (): I
+      begin
+         Result := interfaceControllerFactoryGuid(guid);
+      end);
+end;
+
+{ TAbstractInterfaceControllerFactoryAdapter<I> }
+
+constructor TAbstractInterfaceControllerFactoryAdapter<I>.Create;
+begin
+   inherited Create();
+   Self.instance := nil;
+   Self.singleton := True;
+end;
+
+function TAbstractInterfaceControllerFactoryAdapter<I>.GetInstance(
+  const fnc: TFunc<I>): I;
+begin
+   Result := instance;
    if not Assigned(Result) then
    begin
-      Result := interfaceControllerFactoryGuid(guid);
+      Result := fnc();
       if singleton and (Result is TObject) then
       begin
          var obj := Result as TObject;
          var context := TRttiContext.Create;
          try
-            var rttiType := context.GetType(obj.ClassType);
-            var attrs: TArray<TCustomAttribute> := rttiType.GetAttributes();
-            for var attr in attrs do
+            var cls := obj.ClassType;
+            while cls <> nil do
             begin
-               if attr is SingletonAttribute then
+               var rttiType := context.GetType(cls);
+               var attrs: TArray<TCustomAttribute> := rttiType.GetAttributes();
+               for var attr in attrs do
                begin
-                  instancia := Result;
-                  TInterfaceController.lstClearSingleton.Add(procedure ()
-                     begin
-                        instancia := nil;
-                     end);
-                  Exit;
+                  if attr is SingletonAttribute then
+                  begin
+                     instance := Result;
+                     TInterfaceController.lstClearSingleton.Add(procedure ()
+                        begin
+                           instance := nil;
+                        end);
+                     Exit;
+                  end;
                end;
+
+               cls := cls.ClassParent;
             end;
 
             singleton := False;
